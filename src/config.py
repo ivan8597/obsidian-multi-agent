@@ -28,7 +28,7 @@ class Settings:
     watch_obsidian: bool
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         vault = Path(os.getenv("OBSIDIAN_VAULT_PATH", "./data/obsidian_vault")).expanduser()
         index = Path(os.getenv("FAISS_INDEX_PATH", "./data/faiss_obsidian")).expanduser()
         memory = Path(os.getenv("MEMORY_DB_PATH", "./data/checkpoints.sqlite")).expanduser()

@@ -4,7 +4,6 @@ import argparse
 import logging
 import os
 import re
-from pathlib import Path
 
 import gradio as gr
 from dotenv import load_dotenv
@@ -78,7 +77,7 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
                 )
                 with gr.Row():
                     send = gr.Button("Отправить", variant="primary")
-                    clear = gr.ClearButton([message, chatbot], value="Очистить")
+                    gr.ClearButton([message, chatbot], value="Очистить")
             with gr.Column(scale=1):
                 thread_id = gr.Textbox(value="gradio-local", label="ID сессии")
                 status = gr.Markdown(index_status())
