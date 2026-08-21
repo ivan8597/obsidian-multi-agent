@@ -9,6 +9,7 @@ import gradio as gr
 from dotenv import load_dotenv
 
 from .agent import LocalResearchAgent, create_agent
+from .analytics import summarize_markdown
 from .citations import append_citation_warning
 from .config import Settings
 from .indexer import ObsidianIndex, start_vault_watch
@@ -155,6 +156,8 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
                     wrong_source = gr.Button("Неверный источник")
                     missing_document = gr.Button("Не найден документ")
                 feedback_status = gr.Markdown()
+                refresh_analytics = gr.Button("Обновить аналитику")
+                analytics_panel = gr.Markdown("Аналитика появится после первого запуска.")
                 gr.Markdown(
                     "**Правила:** `[OBSIDIAN-N]` — фрагмент локальной заметки; "
                     "URL — внешний источник. Агент не должен выдавать неподтверждённые сведения как факты."
@@ -171,6 +174,7 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
         not_useful.click(lambda: save_feedback("not_useful"), outputs=feedback_status)
         wrong_source.click(lambda: save_feedback("wrong_source"), outputs=feedback_status)
         missing_document.click(lambda: save_feedback("missing_document"), outputs=feedback_status)
+        refresh_analytics.click(lambda: summarize_markdown(agent.trace_store), outputs=analytics_panel)
 
     return demo
 

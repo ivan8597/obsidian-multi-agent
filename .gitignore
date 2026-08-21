@@ -9,5 +9,8 @@ __pycache__/
 *.egg-info/
 data/faiss_obsidian/
 data/checkpoints.sqlite
+data/traces.sqlite
+data/training.jsonl
+data/*.jsonl
 *.log
 .DS_Store

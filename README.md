@@ -367,3 +367,40 @@ TRACE_RETENTION_RUNS=500
 ```
 
 Перед fine-tuning рекомендуется накопить и вручную проверить набор из реальных вопросов, контекстных источников, ответов, оценок и исправлений. Сначала нужно определить, является ли проблема retrieval, routing, цитированием или стилем ответа.
+
+## Analytics dashboard
+
+В Gradio кнопка **Обновить аналитику** показывает aggregate по persistent traces и feedback: число запусков, success rate, errors, budget stops, average/P95 latency, маршруты, количество feedback и positive feedback rate. Analytics строится из SQLite и сохраняется между перезапусками.
+
+## Version metadata в trace
+
+Каждый новый запуск сохраняет версии компонентов:
+
+```text
+harness_version
+prompt_version
+model_name
+embedding_model
+index_version
+reranker_version
+```
+
+Это позволяет сравнивать качество и latency до и после замены модели, prompt или индекса. Старые SQLite-базы автоматически получают поле `metadata_json` при старте.
+
+## Экспорт датасета для fine-tuning
+
+Экспортируются только trace с feedback `useful`, у которых сохранён финальный ответ:
+
+```bash
+uv run python scripts/export_training.py \
+  --db data/traces.sqlite \
+  --output data/training.jsonl
+```
+
+Формат каждой строки — chat JSONL с user/assistant messages и metadata запуска:
+
+```json
+{"messages":[{"role":"user","content":"..."},{"role":"assistant","content":"..."}],"metadata":{"run_id":"...","route":"...","sources":{}}}
+```
+
+Экспорт не является автоматическим обучением. Перед fine-tuning необходимо вручную проверить privacy, фактическую корректность ответа, citations и отсутствие prompt injection. Не следует экспортировать private notes во внешний сервис без отдельного разрешения.

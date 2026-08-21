@@ -39,7 +39,8 @@ class TraceStore:
                     created_at REAL NOT NULL,
                     finished_at REAL,
                     latency_ms REAL,
-                    tool_calls INTEGER NOT NULL DEFAULT 0
+                    tool_calls INTEGER NOT NULL DEFAULT 0,
+                    metadata_json TEXT NOT NULL DEFAULT '{}'
                 );
                 CREATE TABLE IF NOT EXISTS trace_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,14 +60,26 @@ class TraceStore:
                 );
                 """
             )
+            columns = {row["name"] for row in connection.execute("PRAGMA table_info(trace_runs)")}
+            if "metadata_json" not in columns:
+                connection.execute("ALTER TABLE trace_runs ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'")
 
     def create_run(self, trace: RunTrace) -> None:
         with self._connect() as connection:
             connection.execute(
                 """INSERT OR REPLACE INTO trace_runs
-                (run_id, thread_id, query, route, route_reason, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (trace.run_id, trace.thread_id, trace.query, trace.route, trace.route_reason, trace.status, time.time()),
+                (run_id, thread_id, query, route, route_reason, status, created_at, metadata_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    trace.run_id,
+                    trace.thread_id,
+                    trace.query,
+                    trace.route,
+                    trace.route_reason,
+                    trace.status,
+                    time.time(),
+                    json.dumps(trace.metadata, ensure_ascii=False),
+                ),
             )
             self._prune(connection)
 
@@ -102,6 +115,7 @@ class TraceStore:
                 (run_id,),
             ).fetchall()
         result = dict(run)
+        result["metadata"] = json.loads(result.pop("metadata_json", "{}"))
         result["events"] = [
             {"event_type": row["event_type"], "timestamp": row["timestamp"], "data": json.loads(row["data_json"])}
             for row in events
@@ -158,6 +172,7 @@ class RunTrace:
     route: str
     route_reason: str
     budget: RunBudget
+    metadata: dict[str, str] = field(default_factory=dict)
     run_id: str = field(default_factory=lambda: uuid4().hex)
     started_at: float = field(default_factory=time.perf_counter)
     finished_at: float | None = None
@@ -210,6 +225,7 @@ class RunTrace:
             "web_urls": sorted(self.web_urls),
             "event_types": [event.event_type for event in self.events],
             "budget": asdict(self.budget),
+            "metadata": self.metadata,
         }
 
     def diagnostics_markdown(self) -> str:
@@ -226,4 +242,6 @@ class RunTrace:
             lines.append(f"- **Stop reason:** `{info['stop_reason']}`")
         lines.append(f"- **Obsidian citations:** `{len(info['obsidian_citations'])}`")
         lines.append(f"- **Web URLs:** `{len(info['web_urls'])}`")
+        if info["metadata"]:
+            lines.append(f"- **Versions:** `{info['metadata']}`")
         return "\n".join(lines)

@@ -41,7 +41,7 @@ jobs:
         run: uv sync --locked --extra dev
 
       - name: Compile Python modules
-        run: uv run python -m compileall -q src tests evaluation
+        run: uv run python -m compileall -q src tests evaluation scripts
 
       - name: Run tests
         run: uv run pytest -q
@@ -50,4 +50,4 @@ jobs:
         run: uv run python -m evaluation.evaluate --predictions evaluation/predictions.example.json
 
       - name: Run Ruff
-        run: uv run ruff check src tests evaluation
+        run: uv run ruff check src tests evaluation scripts

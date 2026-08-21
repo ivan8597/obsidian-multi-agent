@@ -26,12 +26,13 @@ class LocalResearchAgent:
     index: ObsidianIndex
     memory: MemorySaver
     budget: RunBudget = field(default_factory=RunBudget)
+    version_metadata: dict[str, str] = field(default_factory=dict)
     trace_store: TraceStore | None = None
     last_trace: RunTrace | None = None
 
     def invoke(self, query: str, thread_id: str = "local-researcher") -> str:
         route, reason = explain_route(query)
-        trace = RunTrace(query, thread_id, route, reason, self.budget, store=self.trace_store)
+        trace = RunTrace(query, thread_id, route, reason, self.budget, metadata=self.version_metadata, store=self.trace_store)
         self.last_trace = trace
         trace.add("user_message", query_length=len(query))
         with timed("agent_request", thread_id=thread_id, mode="invoke"):
@@ -40,17 +41,19 @@ class LocalResearchAgent:
                 config={"configurable": {"thread_id": thread_id}},
             )
         messages = result.get("messages", [])
-        trace.add("final_answer")
+        answer = _last_text(messages)
+        trace.add("final_answer", answer=answer[:12000], answer_chars=len(answer))
         trace.finish()
-        return _last_text(messages)
+        return answer
 
     def stream(self, query: str, thread_id: str = "local-researcher"):
         config = {"configurable": {"thread_id": thread_id}}
         route, reason = explain_route(query)
-        trace = RunTrace(query, thread_id, route, reason, self.budget, store=self.trace_store)
+        trace = RunTrace(query, thread_id, route, reason, self.budget, metadata=self.version_metadata, store=self.trace_store)
         self.last_trace = trace
         trace.add("user_message", query_length=len(query))
         chunks = 0
+        answer_parts: list[str] = []
         try:
             with timed("agent_request", thread_id=thread_id, mode="stream"):
                 for item in self.app.stream(
@@ -81,7 +84,10 @@ class LocalResearchAgent:
                         if trace.tool_calls > self.budget.max_tool_calls:
                             trace.finish("stopped", "tool_call_budget_exhausted")
                             return
+                        answer_parts.append(content)
                         yield content
+            answer = "".join(answer_parts)
+            trace.add("final_answer", answer=answer[:12000], answer_chars=len(answer))
             trace.finish()
         except Exception:
             trace.finish("error", "exception")
@@ -177,4 +183,18 @@ def create_agent(settings: Settings, index: ObsidianIndex) -> LocalResearchAgent
     memory = MemorySaver()
     trace_store = TraceStore(settings.trace_db_path, settings.trace_retention_runs)
     app = supervisor.compile(checkpointer=memory)
-    return LocalResearchAgent(app=app, index=index, memory=memory, trace_store=trace_store)
+    versions = {
+        "harness_version": "0.4.0",
+        "prompt_version": "1",
+        "model_name": settings.ollama_chat_model,
+        "embedding_model": settings.ollama_embed_model,
+        "index_version": "manifest-v2",
+        "reranker_version": "lexical-v1",
+    }
+    return LocalResearchAgent(
+        app=app,
+        index=index,
+        memory=memory,
+        version_metadata=versions,
+        trace_store=trace_store,
+    )
