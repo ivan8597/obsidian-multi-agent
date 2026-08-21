@@ -330,3 +330,18 @@ Watchdog больше не обязан пересобирать весь FAISS-
 ## Ограничения и roadmap
 
 P0 и основные P1-задачи покрыты кодом и тестами. Docker, Prometheus, Grafana, PostgreSQL memory, authentication, multi-user режим и production deployment остаются отдельным P2-этапом. Они требуют решений о модели угроз, хранении данных, секретах и целевой среде развёртывания.
+
+## Persistent run history
+
+Operational traces сохраняются в SQLite, чтобы история не исчезала после перезапуска приложения. По умолчанию база находится в `data/traces.sqlite`.
+
+```env
+TRACE_DB_PATH=./data/traces.sqlite
+TRACE_RETENTION_RUNS=500
+```
+
+В Gradio доступны кнопки **Обновить историю запусков** и **Показать детали trace**. После выполнения запроса нажмите первую кнопку, скопируйте полный `Run ID` из diagnostics или SQLite, вставьте его в поле `Run ID для просмотра` и нажмите вторую кнопку.
+
+В persistent trace не записывается скрытое reasoning модели. Сохраняются только operational events: маршрут, причина выбора, tool calls, tool results, graph nodes, источники, статус, stop reason и latency. Это позволяет проводить аудит, не превращая историю в хранилище секретов или внутреннего рассуждения.
+
+Retention policy ограничивает число запусков параметром `TRACE_RETENTION_RUNS`; при удалении старого запуска связанные события удаляются каскадно. Для production-сценария рекомендуется дополнительно настроить права доступа к каталогу `data/` и redaction чувствительных query или tool arguments.

@@ -21,6 +21,8 @@ class Settings:
     ollama_temperature: float
     faiss_index_path: Path
     memory_db_path: Path
+    trace_db_path: Path
+    trace_retention_runs: int
     retrieval_k: int
     web_max_results: int
     web_page_char_limit: int
@@ -34,7 +36,9 @@ class Settings:
             raise ValueError("WEB_MAX_RESULTS must be greater than zero")
         if self.web_page_char_limit <= 0:
             raise ValueError("WEB_PAGE_CHAR_LIMIT must be greater than zero")
-        if self.web_request_timeout <= 0:
+        if self.trace_retention_runs <= 0:
+            raise ValueError("TRACE_RETENTION_RUNS must be greater than zero")
+        if not self.web_request_timeout > 0:
             raise ValueError("WEB_REQUEST_TIMEOUT must be greater than zero")
         if not 0.0 <= self.ollama_temperature <= 2.0:
             raise ValueError("OLLAMA_TEMPERATURE must be between 0 and 2")
@@ -44,6 +48,7 @@ class Settings:
         vault = Path(os.getenv("OBSIDIAN_VAULT_PATH", "./data/obsidian_vault")).expanduser()
         index = Path(os.getenv("FAISS_INDEX_PATH", "./data/faiss_obsidian")).expanduser()
         memory = Path(os.getenv("MEMORY_DB_PATH", "./data/checkpoints.sqlite")).expanduser()
+        trace = Path(os.getenv("TRACE_DB_PATH", "./data/traces.sqlite")).expanduser()
         return cls(
             obsidian_vault_path=vault,
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"),
@@ -52,6 +57,8 @@ class Settings:
             ollama_temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.2")),
             faiss_index_path=index,
             memory_db_path=memory,
+            trace_db_path=trace,
+            trace_retention_runs=int(os.getenv("TRACE_RETENTION_RUNS", "500")),
             retrieval_k=int(os.getenv("RETRIEVAL_K", "6")),
             web_max_results=int(os.getenv("WEB_MAX_RESULTS", "5")),
             web_page_char_limit=int(os.getenv("WEB_PAGE_CHAR_LIMIT", "7000")),
@@ -62,6 +69,7 @@ class Settings:
     def ensure_directories(self) -> None:
         self.faiss_index_path.parent.mkdir(parents=True, exist_ok=True)
         self.memory_db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.trace_db_path.parent.mkdir(parents=True, exist_ok=True)
 
     def validate_vault(self) -> None:
         if not self.obsidian_vault_path.exists():

@@ -24,6 +24,8 @@ def make_settings(vault: Path, data: Path) -> Settings:
         ollama_temperature=0.2,
         faiss_index_path=data / "faiss",
         memory_db_path=data / "memory.sqlite",
+        trace_db_path=data / "traces.sqlite",
+        trace_retention_runs=10,
         retrieval_k=2,
         web_max_results=2,
         web_page_char_limit=1000,

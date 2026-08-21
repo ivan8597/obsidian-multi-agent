@@ -28,6 +28,44 @@ def extract_sources(text: str) -> str:
     return "\n\n".join(lines) if lines else "Источники в ответе не обнаружены."
 
 
+def trace_history_markdown(agent: LocalResearchAgent, limit: int = 10) -> str:
+    if agent.trace_store is None:
+        return "История trace отключена."
+    runs = agent.trace_store.list_runs(limit)
+    if not runs:
+        return "История запусков пока пуста."
+    lines = ["### Последние запуски", "", "| Run ID | Route | Status | Latency | Tool calls |", "|---|---|---|---:|---:|"]
+    for run in runs:
+        latency = f"{run['latency_ms']:.0f} ms" if run["latency_ms"] is not None else "running"
+        lines.append(
+            f"| `{run['run_id'][:12]}` | `{run['route']}` | `{run['status']}` | {latency} | "
+            f"{run['tool_calls']} |"
+        )
+    return "\n".join(lines)
+
+
+def trace_detail_markdown(agent: LocalResearchAgent, run_id: str) -> str:
+    if agent.trace_store is None:
+        return "История trace отключена."
+    run = agent.trace_store.get_run(run_id.strip())
+    if run is None:
+        return "Запуск с таким run_id не найден."
+    lines = [
+        "### Детали запуска",
+        f"- **Run ID:** `{run['run_id']}`",
+        f"- **Thread:** `{run['thread_id']}`",
+        f"- **Route:** `{run['route']}` — {run['route_reason']}",
+        f"- **Status:** `{run['status']}`",
+        f"- **Stop reason:** `{run['stop_reason'] or '—'}`",
+        f"- **Latency:** `{run['latency_ms']} ms`",
+        f"- **Query:** {run['query']}",
+        "",
+        "#### Events",
+    ]
+    lines.extend(f"- `{event['event_type']}` — `{event['data']}`" for event in run["events"])
+    return "\n".join(lines)
+
+
 def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> gr.Blocks:
     def index_status() -> str:
         if not index.ready:
@@ -97,6 +135,11 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
                 reindex_result = gr.Markdown()
                 sources = gr.Markdown("Источники появятся после ответа.", label="Источники")
                 diagnostics = gr.Markdown("Диагностика запуска появится после ответа.", label="Диагностика")
+                refresh_traces = gr.Button("Обновить историю запусков")
+                trace_history = gr.Markdown(trace_history_markdown(agent))
+                trace_id = gr.Textbox(label="Run ID для просмотра", placeholder="Вставьте полный run_id")
+                show_trace = gr.Button("Показать детали trace")
+                trace_detail = gr.Markdown("Детали выбранного запуска появятся здесь.")
                 gr.Markdown(
                     "**Правила:** `[OBSIDIAN-N]` — фрагмент локальной заметки; "
                     "URL — внешний источник. Агент не должен выдавать неподтверждённые сведения как факты."
@@ -107,6 +150,8 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
         send.click(respond, inputs=submit, outputs=outputs)
         message.submit(respond, inputs=submit, outputs=outputs)
         reindex_button.click(reindex, outputs=[reindex_result, status])
+        refresh_traces.click(lambda: trace_history_markdown(agent), outputs=trace_history)
+        show_trace.click(lambda run_id: trace_detail_markdown(agent, run_id), inputs=trace_id, outputs=trace_detail)
 
     return demo
 

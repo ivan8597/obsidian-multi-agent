@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from langchain_core.documents import Document
 
@@ -8,13 +10,15 @@ from src.reranker import rerank
 
 def make_settings(**overrides):
     values = {
-        "obsidian_vault_path": __import__("pathlib").Path("."),
+        "obsidian_vault_path": Path("."),
         "ollama_base_url": "http://127.0.0.1:11434",
         "ollama_chat_model": "llama3.2",
         "ollama_embed_model": "nomic-embed-text",
         "ollama_temperature": 0.2,
-        "faiss_index_path": __import__("pathlib").Path("data/index"),
-        "memory_db_path": __import__("pathlib").Path("data/memory.sqlite"),
+        "faiss_index_path": Path("data/index"),
+        "memory_db_path": Path("data/memory.sqlite"),
+        "trace_db_path": Path("data/traces.sqlite"),
+        "trace_retention_runs": 10,
         "retrieval_k": 3,
         "web_max_results": 5,
         "web_page_char_limit": 1000,

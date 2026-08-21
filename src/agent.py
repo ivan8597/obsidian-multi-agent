@@ -15,7 +15,7 @@ from .indexer import ObsidianIndex
 from .memory import build_memanto_memory
 from .observability import timed
 from .tools import build_tools
-from .tracing import RunBudget, RunTrace
+from .tracing import RunBudget, RunTrace, TraceStore
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +26,12 @@ class LocalResearchAgent:
     index: ObsidianIndex
     memory: MemorySaver
     budget: RunBudget = field(default_factory=RunBudget)
+    trace_store: TraceStore | None = None
     last_trace: RunTrace | None = None
 
     def invoke(self, query: str, thread_id: str = "local-researcher") -> str:
         route, reason = explain_route(query)
-        trace = RunTrace(query, thread_id, route, reason, self.budget)
+        trace = RunTrace(query, thread_id, route, reason, self.budget, store=self.trace_store)
         self.last_trace = trace
         trace.add("user_message", query_length=len(query))
         with timed("agent_request", thread_id=thread_id, mode="invoke"):
@@ -46,7 +47,7 @@ class LocalResearchAgent:
     def stream(self, query: str, thread_id: str = "local-researcher"):
         config = {"configurable": {"thread_id": thread_id}}
         route, reason = explain_route(query)
-        trace = RunTrace(query, thread_id, route, reason, self.budget)
+        trace = RunTrace(query, thread_id, route, reason, self.budget, store=self.trace_store)
         self.last_trace = trace
         trace.add("user_message", query_length=len(query))
         chunks = 0
@@ -174,5 +175,6 @@ def create_agent(settings: Settings, index: ObsidianIndex) -> LocalResearchAgent
         ),
     )
     memory = MemorySaver()
+    trace_store = TraceStore(settings.trace_db_path, settings.trace_retention_runs)
     app = supervisor.compile(checkpointer=memory)
-    return LocalResearchAgent(app=app, index=index, memory=memory)
+    return LocalResearchAgent(app=app, index=index, memory=memory, trace_store=trace_store)
