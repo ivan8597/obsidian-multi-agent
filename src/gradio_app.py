@@ -73,6 +73,14 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
         count = index._vectorstore.index.ntotal if index._vectorstore is not None else 0
         return f"Индекс: готов, фрагментов — {count}"
 
+    def save_feedback(label: str) -> str:
+        trace = agent.last_trace
+        if trace is None or agent.trace_store is None:
+            return "Feedback недоступен: запуск ещё не выполнен."
+        if not agent.trace_store.add_feedback(trace.run_id, label):
+            return "Feedback не сохранён: run_id не найден в истории."
+        return f"Feedback сохранён для run `{trace.run_id[:12]}`."
+
     def reindex() -> tuple[str, str]:
         try:
             count = index.rebuild(force=True)
@@ -140,6 +148,13 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
                 trace_id = gr.Textbox(label="Run ID для просмотра", placeholder="Вставьте полный run_id")
                 show_trace = gr.Button("Показать детали trace")
                 trace_detail = gr.Markdown("Детали выбранного запуска появятся здесь.")
+                gr.Markdown("### Оценка ответа")
+                with gr.Row():
+                    useful = gr.Button("Полезно")
+                    not_useful = gr.Button("Не полезно")
+                    wrong_source = gr.Button("Неверный источник")
+                    missing_document = gr.Button("Не найден документ")
+                feedback_status = gr.Markdown()
                 gr.Markdown(
                     "**Правила:** `[OBSIDIAN-N]` — фрагмент локальной заметки; "
                     "URL — внешний источник. Агент не должен выдавать неподтверждённые сведения как факты."
@@ -152,6 +167,10 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
         reindex_button.click(reindex, outputs=[reindex_result, status])
         refresh_traces.click(lambda: trace_history_markdown(agent), outputs=trace_history)
         show_trace.click(lambda run_id: trace_detail_markdown(agent, run_id), inputs=trace_id, outputs=trace_detail)
+        useful.click(lambda: save_feedback("useful"), outputs=feedback_status)
+        not_useful.click(lambda: save_feedback("not_useful"), outputs=feedback_status)
+        wrong_source.click(lambda: save_feedback("wrong_source"), outputs=feedback_status)
+        missing_document.click(lambda: save_feedback("missing_document"), outputs=feedback_status)
 
     return demo
 

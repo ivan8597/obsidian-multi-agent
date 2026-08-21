@@ -50,6 +50,13 @@ class TraceStore:
                 );
                 CREATE INDEX IF NOT EXISTS idx_trace_runs_created_at ON trace_runs(created_at DESC);
                 CREATE INDEX IF NOT EXISTS idx_trace_events_run_id ON trace_events(run_id, id);
+                CREATE TABLE IF NOT EXISTS trace_feedback (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL REFERENCES trace_runs(run_id) ON DELETE CASCADE,
+                    label TEXT NOT NULL,
+                    note TEXT,
+                    created_at REAL NOT NULL
+                );
                 """
             )
 
@@ -100,6 +107,27 @@ class TraceStore:
             for row in events
         ]
         return result
+
+    def add_feedback(self, run_id: str, label: str, note: str | None = None) -> bool:
+        allowed = {"useful", "not_useful", "wrong_source", "missing_document"}
+        if label not in allowed:
+            raise ValueError(f"Unknown feedback label: {label}")
+        with self._connect() as connection:
+            exists = connection.execute("SELECT 1 FROM trace_runs WHERE run_id = ?", (run_id,)).fetchone()
+            if exists is None:
+                return False
+            connection.execute(
+                "INSERT INTO trace_feedback (run_id, label, note, created_at) VALUES (?, ?, ?, ?)",
+                (run_id, label, note, time.time()),
+            )
+        return True
+
+    def list_feedback(self, limit: int = 100) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM trace_feedback ORDER BY created_at DESC LIMIT ?", (max(1, min(limit, 500)),)
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def _prune(self, connection: sqlite3.Connection) -> None:
         connection.execute(
