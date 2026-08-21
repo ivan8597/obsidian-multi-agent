@@ -27,6 +27,18 @@ class Settings:
     web_request_timeout: int
     watch_obsidian: bool
 
+    def __post_init__(self) -> None:
+        if self.retrieval_k <= 0:
+            raise ValueError("RETRIEVAL_K must be greater than zero")
+        if self.web_max_results <= 0:
+            raise ValueError("WEB_MAX_RESULTS must be greater than zero")
+        if self.web_page_char_limit <= 0:
+            raise ValueError("WEB_PAGE_CHAR_LIMIT must be greater than zero")
+        if self.web_request_timeout <= 0:
+            raise ValueError("WEB_REQUEST_TIMEOUT must be greater than zero")
+        if not 0.0 <= self.ollama_temperature <= 2.0:
+            raise ValueError("OLLAMA_TEMPERATURE must be between 0 and 2")
+
     @classmethod
     def from_env(cls) -> Settings:
         vault = Path(os.getenv("OBSIDIAN_VAULT_PATH", "./data/obsidian_vault")).expanduser()

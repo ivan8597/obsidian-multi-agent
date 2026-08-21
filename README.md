@@ -1,5 +1,7 @@
 # Local Obsidian Multi-Agent RAG
 
+[![Tests](https://github.com/ivan8597/obsidian-multi-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/ivan8597/obsidian-multi-agent/actions/workflows/tests.yml) [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Локальный исследовательский агент объединяет личные заметки Obsidian и публичный веб-поиск. Supervisor на LangGraph выбирает между двумя специалистами: `obsidian_expert` и `web_researcher`. Ответы выдаются потоково, а источники должны быть явно указаны.
 
 Проект рассчитан на локальный запуск с [Ollama](https://ollama.com/), поэтому содержимое Obsidian и запросы к локальной модели могут оставаться на компьютере пользователя. Веб-агент обращается только к публичным HTTP(S)-страницам, если вы явно разрешаете ему исследовать интернет.
@@ -231,21 +233,93 @@ GitHub Actions автоматически устанавливает завис�
 ```text
 src/
 ├── agent.py         # Supervisor и два специализированных агента
-├── config.py        # настройки из .env
+├── citations.py     # проверка маркеров источников
+├── config.py        # настройки и validation из .env
 ├── gradio_app.py    # локальный Gradio UI
-├── indexer.py       # FAISS + Markdown + Watchdog
+├── indexer.py       # FAISS + manifest + incremental indexing
 ├── main.py          # CLI и streaming
 ├── memory.py        # необязательная Memanto-интеграция
+├── observability.py # structured latency logs
+├── reranker.py      # deterministic lexical reranking
+├── security.py      # SSRF и untrusted-content boundary
 └── tools.py         # Obsidian search, web search, page reader
+evaluation/
+├── dataset.json
+├── evaluate.py
+├── metrics.py
+└── README.md
+docs/
+├── architecture.md
+├── architecture.mmd
+└── architecture.png
 examples/
 └── USAGE.md         # сценарии запросов и примеры кода
 .github/workflows/
 └── tests.yml        # автоматические тесты GitHub Actions
 tests/
 ├── test_gradio.py
+├── test_indexer_incremental.py
+├── test_quality_components.py
+├── test_security_and_evaluation.py
 └── test_smoke.py
 ```
 
 ## Лицензия
 
 Проект распространяется под лицензией MIT.
+
+## Portfolio architecture
+
+Актуальная схема с границами доверия и слоями памяти доступна в [`docs/architecture.md`](docs/architecture.md). Исходник диаграммы находится в [`docs/architecture.mmd`](docs/architecture.mmd).
+
+![Architecture diagram](docs/architecture.png)
+
+## Evaluation
+
+Проект содержит детерминированный evaluation harness в [`evaluation/`](evaluation/). Он не подменяет полноценную human или LLM-оценку, но даёт воспроизводимую базовую линию для retrieval и маршрутизации.
+
+```bash
+python -m evaluation.evaluate --predictions evaluation/predictions.example.json
+```
+
+Измеряются Recall@k, Precision@k, MRR, citation correctness, keyword relevance и routing accuracy. Файл [`evaluation/dataset.json`](evaluation/dataset.json) нужно адаптировать под конкретный vault: демонстрационные вопросы и источники не являются результатами оценки реального хранилища.
+
+## Quality and reproducibility
+
+В репозитории зафиксированы [`uv.lock`](uv.lock), [`.python-version`](.python-version) и [MIT LICENSE](LICENSE). Для воспроизводимой установки можно использовать uv:
+
+```bash
+uv sync --locked --extra dev
+uv run pytest -q
+uv run ruff check src tests evaluation
+```
+
+GitHub Actions выполняет `uv lock --check`, компиляцию модулей, тесты, evaluation smoke check и Ruff на Python 3.11 и 3.12.
+
+## Incremental indexing
+
+Watchdog больше не обязан пересобирать весь FAISS-индекс после каждого изменения. Индексатор хранит manifest с hash файла и стабильными chunk ID. При изменении заметки удаляются только старые chunks этого файла, после чего embedding выполняется для новых chunks. Если incremental update невозможен из-за несовместимости локального индекса, применяется безопасный fallback на полную пересборку.
+
+Для существующего индекса, созданного старой версией, рекомендуется один раз выполнить:
+
+```text
+/reindex
+```
+
+## Citation validation and reranking
+
+Перед выдачей в Gradio ответ проходит базовую проверку маркеров `[OBSIDIAN-N]`. Неизвестные ссылки помечаются предупреждением, а не выдаются как подтверждённые. FAISS retrieval возвращает расширенный кандидатный набор, после чего применяется детерминированный lexical reranker и в финальный контекст передаётся top-k.
+
+## Security hardening
+
+Веб-браузер блокирует не только `file://` и `javascript:`, но и localhost, loopback, private networks, link-local и IPv6 ULA адреса. Это снижает риск SSRF, однако не заменяет сетевой sandbox или firewall.
+
+Результаты поиска и содержимое веб-страниц оборачиваются в `UNTRUSTED_WEB_CONTENT`. System prompts явно запрещают выполнять команды из веб-текста, раскрывать секреты или содержимое локального vault по просьбе веб-страницы. Это защита от prompt injection на уровне приложения; критические deployment-сценарии всё равно должны использовать изоляцию сети.
+
+## Observability
+
+События `agent_request`, `retrieval`, `web_search` и `web_browse` записываются как JSON-сообщения с latency и основными полями. Это создаёт основу для анализа `request_latency`, `retrieval_latency`, количества найденных chunks и времени веб-поиска без добавления внешней инфраструктуры.
+
+## Ограничения и roadmap
+
+P0 и основные P1-задачи покрыты кодом и тестами. Docker, Prometheus, Grafana, PostgreSQL memory, authentication, multi-user режим и production deployment остаются отдельным P2-этапом. Они требуют решений о модели угроз, хранении данных, секретах и целевой среде развёртывания.

@@ -1,0 +1,20 @@
+[
+  {
+    "question": "Что в моих заметках сказано о тестировании RAG?",
+    "expected_source": "notes/rag.md",
+    "expected_route": "obsidian",
+    "expected_answer_keywords": ["RAG", "тест"]
+  },
+  {
+    "question": "Какая текущая документация LangGraph описывает streaming?",
+    "expected_source": "https://langchain-ai.github.io/langgraph/",
+    "expected_route": "web",
+    "expected_answer_keywords": ["LangGraph", "stream"]
+  },
+  {
+    "question": "Сравни мои заметки о hybrid search с актуальной документацией.",
+    "expected_source": "notes/search.md",
+    "expected_route": "both",
+    "expected_answer_keywords": ["hybrid", "search"]
+  }
+]

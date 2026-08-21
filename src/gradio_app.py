@@ -9,6 +9,7 @@ import gradio as gr
 from dotenv import load_dotenv
 
 from .agent import LocalResearchAgent, create_agent
+from .citations import append_citation_warning
 from .config import Settings
 from .indexer import ObsidianIndex, start_vault_watch
 
@@ -49,13 +50,18 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
         history = history or []
         history = history + [[message, ""]]
         answer = ""
+        observed_citations: set[str] = set()
         try:
             for chunk in agent.stream(message, thread_id=thread_id or "gradio-local"):
                 answer += chunk
+                observed_citations.update(re.findall(r"\[OBSIDIAN-\d+\]", chunk))
                 history[-1][1] = answer
                 yield history, "", extract_sources(answer), index_status()
             if not answer:
                 history[-1][1] = "Агент не вернул текстовый ответ."
+            else:
+                answer = append_citation_warning(answer, observed_citations)
+                history[-1][1] = answer
             yield history, "", extract_sources(answer), index_status()
         except Exception as exc:
             logger.exception("Gradio agent invocation failed")

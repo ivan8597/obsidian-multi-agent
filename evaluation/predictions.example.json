@@ -1,0 +1,23 @@
+[
+  {
+    "retrieved_sources": ["notes/rag.md", "notes/other.md"],
+    "k": 5,
+    "answer": "В заметках описано тестирование RAG [OBSIDIAN-1].",
+    "valid_citations": ["[OBSIDIAN-1]"],
+    "predicted_route": "obsidian"
+  },
+  {
+    "retrieved_sources": ["https://langchain-ai.github.io/langgraph/"],
+    "k": 5,
+    "answer": "Актуальная документация LangGraph описывает stream API: https://langchain-ai.github.io/langgraph/",
+    "valid_citations": [],
+    "predicted_route": "web"
+  },
+  {
+    "retrieved_sources": ["notes/search.md", "https://langchain-ai.github.io/langgraph/"],
+    "k": 5,
+    "answer": "Заметки и документация обсуждают hybrid search.",
+    "valid_citations": [],
+    "predicted_route": "both"
+  }
+]

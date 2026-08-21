@@ -1,0 +1,20 @@
+flowchart TB
+    U[User] --> S[Supervisor\nLangGraph]
+    S --> O[Obsidian Expert]
+    S --> W[Web Researcher]
+    S --> M[Memory Layer]
+    O --> R[FAISS Retriever]
+    R --> RR[Lexical Reranker]
+    RR --> N[Obsidian Notes]
+    W --> D[DDGS Search]
+    W --> B[Safe Page Browser]
+    B --> X[Untrusted Web Content Boundary]
+    M --> MS[MemorySaver\nCurrent Thread]
+    M --> MT[Memanto\nOptional Long-Term]
+    N --> A[LLM Answer Composer]
+    X --> A
+    MS --> A
+    MT --> A
+    A --> C[Citation Validator]
+    C --> F[Final Answer\nSources + Conclusions]
+    S -. metrics .-> L[Structured Logs\nLatency + Retrieval Metrics]

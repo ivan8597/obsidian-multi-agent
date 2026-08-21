@@ -7,7 +7,7 @@ from src.tools import _safe_url
 
 def test_safe_url_allows_http_and_https_only():
     assert _safe_url("https://example.com/page")
-    assert _safe_url("http://localhost:8000")
+    assert not _safe_url("http://localhost:8000")
     assert not _safe_url("file:///etc/passwd")
     assert not _safe_url("javascript:alert(1)")
 
