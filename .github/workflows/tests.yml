@@ -12,6 +12,8 @@ permissions:
 jobs:
   test:
     name: Python ${{ matrix.python-version }}
+    env:
+      PYTHONPATH: .
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
