@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 
 from langchain_core.messages import BaseMessage
 from langchain_ollama import ChatOllama
@@ -14,6 +15,7 @@ from .indexer import ObsidianIndex
 from .memory import build_memanto_memory
 from .observability import timed
 from .tools import build_tools
+from .tracing import RunBudget, RunTrace
 
 logger = logging.getLogger(__name__)
 
@@ -23,28 +25,92 @@ class LocalResearchAgent:
     app: object
     index: ObsidianIndex
     memory: MemorySaver
+    budget: RunBudget = field(default_factory=RunBudget)
+    last_trace: RunTrace | None = None
 
     def invoke(self, query: str, thread_id: str = "local-researcher") -> str:
+        route, reason = explain_route(query)
+        trace = RunTrace(query, thread_id, route, reason, self.budget)
+        self.last_trace = trace
+        trace.add("user_message", query_length=len(query))
         with timed("agent_request", thread_id=thread_id, mode="invoke"):
             result = self.app.invoke(
                 {"messages": [{"role": "user", "content": query}]},
                 config={"configurable": {"thread_id": thread_id}},
             )
         messages = result.get("messages", [])
+        trace.add("final_answer")
+        trace.finish()
         return _last_text(messages)
 
     def stream(self, query: str, thread_id: str = "local-researcher"):
         config = {"configurable": {"thread_id": thread_id}}
-        with timed("agent_request", thread_id=thread_id, mode="stream"):
-            for item in self.app.stream(
-                {"messages": [{"role": "user", "content": query}]},
-                config=config,
-                stream_mode="messages",
-            ):
-                message = item[0] if isinstance(item, tuple) and item else item
-                content = getattr(message, "content", "")
-                if content:
-                    yield content
+        route, reason = explain_route(query)
+        trace = RunTrace(query, thread_id, route, reason, self.budget)
+        self.last_trace = trace
+        trace.add("user_message", query_length=len(query))
+        chunks = 0
+        try:
+            with timed("agent_request", thread_id=thread_id, mode="stream"):
+                for item in self.app.stream(
+                    {"messages": [{"role": "user", "content": query}]},
+                    config=config,
+                    stream_mode="messages",
+                ):
+                    if time.perf_counter() - trace.started_at > self.budget.max_seconds:
+                        trace.finish("stopped", "time_budget_exhausted")
+                        return
+                    message = item[0] if isinstance(item, tuple) and item else item
+                    metadata = item[1] if isinstance(item, tuple) and len(item) > 1 else {}
+                    tool_calls = getattr(message, "tool_calls", []) or []
+                    for tool_call in tool_calls:
+                        trace.add("tool_call", name=tool_call.get("name", "unknown"))
+                    if getattr(message, "type", "") == "tool":
+                        trace.add("tool_result", name=getattr(message, "name", "unknown"))
+                    if metadata.get("langgraph_node"):
+                        trace.add("node", name=metadata["langgraph_node"])
+                    content = getattr(message, "content", "")
+                    if isinstance(content, str) and content:
+                        chunks += 1
+                        if chunks > self.budget.max_stream_chunks:
+                            trace.finish("stopped", "stream_chunk_budget_exhausted")
+                            return
+                        trace.citations.update(_citation_markers(content))
+                        trace.web_urls.update(_web_urls(content))
+                        if trace.tool_calls > self.budget.max_tool_calls:
+                            trace.finish("stopped", "tool_call_budget_exhausted")
+                            return
+                        yield content
+            trace.finish()
+        except Exception:
+            trace.finish("error", "exception")
+            raise
+
+
+def explain_route(query: str) -> tuple[str, str]:
+    """Return a transparent preflight route; the Supervisor remains authoritative."""
+    text = query.lower()
+    local_terms = ("мои заметки", "моих замет", "obsidian", "vault", "в заметках", "из записей")
+    web_terms = ("актуаль", "сейчас", "сегодня", "интернет", "документац", "проверь в сети", "web")
+    wants_local = any(term in text for term in local_terms)
+    wants_web = any(term in text for term in web_terms)
+    if wants_local and wants_web:
+        return "obsidian_expert + web_researcher", "Запрос одновременно ссылается на личные заметки и внешнюю актуальную информацию."
+    if wants_web:
+        return "web_researcher", "Найдены признаки запроса на актуальное внешнее исследование."
+    return "obsidian_expert", "По умолчанию приватные вопросы направляются к локальным заметкам, без веб-доступа."
+
+
+def _citation_markers(text: str) -> set[str]:
+    import re
+
+    return set(re.findall(r"\[OBSIDIAN-\d+\]", text))
+
+
+def _web_urls(text: str) -> set[str]:
+    import re
+
+    return set(re.findall(r"https?://[^\s)]+", text))
 
 
 def _last_text(messages: list[BaseMessage]) -> str:

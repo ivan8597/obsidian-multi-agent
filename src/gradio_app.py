@@ -45,7 +45,7 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
 
     def respond(message: str, history: list, thread_id: str):
         if not message.strip():
-            yield history, "", "Введите вопрос.", index_status()
+            yield history, "", "Введите вопрос.", index_status(), "Диагностика недоступна: пустой запрос."
             return
         history = history or []
         history = history + [[message, ""]]
@@ -56,17 +56,23 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
                 answer += chunk
                 observed_citations.update(re.findall(r"\[OBSIDIAN-\d+\]", chunk))
                 history[-1][1] = answer
-                yield history, "", extract_sources(answer), index_status()
+                trace = agent.last_trace
+                diagnostics = trace.diagnostics_markdown() if trace else "Диагностика недоступна."
+                yield history, "", extract_sources(answer), index_status(), diagnostics
             if not answer:
                 history[-1][1] = "Агент не вернул текстовый ответ."
             else:
                 answer = append_citation_warning(answer, observed_citations)
                 history[-1][1] = answer
-            yield history, "", extract_sources(answer), index_status()
+            trace = agent.last_trace
+            diagnostics = trace.diagnostics_markdown() if trace else "Диагностика недоступна."
+            yield history, "", extract_sources(answer), index_status(), diagnostics
         except Exception as exc:
             logger.exception("Gradio agent invocation failed")
             history[-1][1] = f"Ошибка агента: {exc}"
-            yield history, "", "Источники недоступны из-за ошибки.", index_status()
+            trace = agent.last_trace
+            diagnostics = trace.diagnostics_markdown() if trace else "Ошибка до создания trace."
+            yield history, "", "Источники недоступны из-за ошибки.", index_status(), diagnostics
 
     with gr.Blocks(title="Local Obsidian Research Agent", theme=gr.themes.Soft()) as demo:
         gr.Markdown(
@@ -90,13 +96,14 @@ def build_ui(agent: LocalResearchAgent, index: ObsidianIndex, observer=None) -> 
                 reindex_button = gr.Button("Переиндексировать Obsidian")
                 reindex_result = gr.Markdown()
                 sources = gr.Markdown("Источники появятся после ответа.", label="Источники")
+                diagnostics = gr.Markdown("Диагностика запуска появится после ответа.", label="Диагностика")
                 gr.Markdown(
                     "**Правила:** `[OBSIDIAN-N]` — фрагмент локальной заметки; "
                     "URL — внешний источник. Агент не должен выдавать неподтверждённые сведения как факты."
                 )
 
         submit = [message, chatbot, thread_id]
-        outputs = [chatbot, message, sources, status]
+        outputs = [chatbot, message, sources, status, diagnostics]
         send.click(respond, inputs=submit, outputs=outputs)
         message.submit(respond, inputs=submit, outputs=outputs)
         reindex_button.click(reindex, outputs=[reindex_result, status])

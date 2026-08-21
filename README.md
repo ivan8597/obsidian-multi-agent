@@ -122,7 +122,7 @@ http://127.0.0.1:7860
 python -m src.gradio_app --host 127.0.0.1 --port 7860
 ```
 
-Интерфейс содержит чат с потоковой выдачей, поле `ID сессии`, панель источников, индикатор количества индексированных фрагментов и кнопку `Переиндексировать Obsidian`. Если `WATCH_OBSIDIAN=true`, изменения заметок автоматически запускают консервативную пересборку индекса.
+Интерфейс содержит чат с потоковой выдачей, поле `ID сессии`, панель источников, diagnostics-панель, индикатор количества индексированных фрагментов и кнопку `Переиндексировать Obsidian`. Diagnostics показывает `run_id`, предварительный route, причину выбора, число tool calls, найденные citations, web URLs, latency и stop reason. Если `WATCH_OBSIDIAN=true`, изменения заметок автоматически запускают консервативную пересборку индекса.
 
 По умолчанию Gradio слушает только `127.0.0.1`, то есть интерфейс доступен лишь на этом компьютере. Не используйте `--host 0.0.0.0`, если не хотите открыть интерфейс другим устройствам в локальной сети.
 
@@ -242,7 +242,8 @@ src/
 ├── observability.py # structured latency logs
 ├── reranker.py      # deterministic lexical reranking
 ├── security.py      # SSRF и untrusted-content boundary
-└── tools.py         # Obsidian search, web search, page reader
+├── tools.py         # Obsidian search, web search, page reader
+└── tracing.py       # RunTrace, route explanation and execution budgets
 evaluation/
 ├── dataset.json
 ├── evaluate.py
@@ -273,6 +274,12 @@ tests/
 Актуальная схема с границами доверия и слоями памяти доступна в [`docs/architecture.md`](docs/architecture.md). Исходник диаграммы находится в [`docs/architecture.mmd`](docs/architecture.mmd).
 
 ![Architecture diagram](docs/architecture.png)
+
+## Explainability and run budgets
+
+Каждый запуск получает `run_id` и типизированный `RunTrace`. Trace фиксирует пользовательский запрос, объяснимый preflight route, tool calls, tool results, graph nodes, citations, URLs, финальный статус и причину остановки. Предварительный route является объяснением для пользователя; окончательное решение Supervisor остаётся авторитетным.
+
+Для защиты от runaway runs применяется `RunBudget` с ограничениями общего времени, числа tool calls и stream chunks. При превышении лимита система возвращает статус `stopped` и machine-readable `stop_reason`, а не делает вид, что успешно завершила задачу.
 
 ## Evaluation
 
